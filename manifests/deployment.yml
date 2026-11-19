@@ -16,7 +16,7 @@ spec:
         app: developer-hub
       annotations:
         # Subir este número al cambiar configmap.yml para que los Pods se recreen con la nueva configuración
-        developer-hub/config-version: "3"
+        developer-hub/config-version: "4"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -64,12 +64,15 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /.backstage/health/v1/liveness
               port: http
             initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5     # con la CPU al límite el health check tarda más de 1 s
+            failureThreshold: 6
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

@@ -5,7 +5,8 @@ set -euo pipefail
 
 DURACION="${1:-240}"
 HILOS="${2:-12}"
-URL="http://developer-hub.developer-hub.svc.cluster.local"
+# Se usa la ClusterIP del Service: busybox resuelve DNS en cada petición y saturaría CoreDNS
+URL="http://$(kubectl -n developer-hub get svc developer-hub -o jsonpath='{.spec.clusterIP}')"
 
 kubectl -n developer-hub delete pod generador-carga --ignore-not-found --wait=true >/dev/null
 kubectl -n developer-hub run generador-carga --image=busybox:1.37 --restart=Never -- \
