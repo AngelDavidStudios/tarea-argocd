@@ -12,6 +12,7 @@ manifests/            ← carpeta que sincroniza Argo CD
   deployment.yml      2 réplicas, labels/selectors, requests/limits, puerto 7007
   service.yml         NodePort 30700 → targetPort 7007
   hpa.yml             autoscaling/v2: 2 a 5 réplicas al 50 % de CPU
+  postgres.yml        PostgreSQL compartido (Secret, PVC, Deployment, Service ClusterIP)
 argocd/
   application.yml     Application de Argo CD con Automated Sync (prune + selfHeal)
 scripts/
@@ -39,6 +40,10 @@ asociado a los Pods con el selector `app: developer-hub`.
 
 **HPA** `developer-hub`: `minReplicas` 2, `maxReplicas` 5 y objetivo de 50 % de CPU (100m por Pod sobre los 200m pedidos).
 
+**PostgreSQL** `postgres`: base común para todas las réplicas. Guarda el catálogo y las claves con que se firman
+las sesiones, así cualquier réplica valida el token emitido por otra y Developer Hub puede escalar sin estado.
+Las credenciales del Secret son de laboratorio: la base solo se expone dentro del clúster.
+
 **Application** `developer-hub`: apunta a `manifests/` en la rama `main`, crea el namespace `developer-hub`
 y tiene `automated` con `prune` y `selfHeal`. Ignora `/spec/replicas` del Deployment para que el HPA y Argo CD no se peleen.
 
@@ -59,5 +64,13 @@ open http://10.5.0.3:30700
 bash scripts/generar-carga.sh 240 12
 kubectl -n developer-hub get hpa developer-hub -w
 ```
+
+## Problemas resueltos durante el despliegue
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| Página en blanco, `ERR_SSL_PROTOCOL_ERROR` en el navegador | La CSP de Backstage incluye `upgrade-insecure-requests` y el NodePort sirve HTTP | `backend.csp.upgrade-insecure-requests: false` |
+| `401 Unauthorized` intermitente con 2 réplicas | SQLite en memoria: cada réplica firmaba sesiones con su propia clave | PostgreSQL compartido |
+| Al escalar a 5, las réplicas nuevas no quedaban Ready | PostgreSQL OOMKilled con límite de 256Mi (~18 conexiones por réplica) | Límite 512Mi, `max_connections=150`, pool de 3 por plugin |
 
 Cualquier cambio en `manifests/` que se suba a `main` lo aplica Argo CD solo, sin `kubectl apply`.
