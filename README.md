@@ -17,6 +17,8 @@ argocd/
   application.yml     Application de Argo CD con Automated Sync (prune + selfHeal)
 scripts/
   generar-carga.sh    genera tráfico dentro del clúster para probar el HPA
+pruebas/k6/
+  usuarios-developer-hub.js   prueba de carga k6: hasta 200 usuarios virtuales por el NodePort
 ```
 
 ## Entorno
@@ -64,6 +66,30 @@ open http://10.5.0.3:30700
 bash scripts/generar-carga.sh 240 12
 kubectl -n developer-hub get hpa developer-hub -w
 ```
+
+## Prueba de carga con k6
+
+`pruebas/k6/usuarios-developer-hub.js` simula usuarios reales que entran a Developer Hub por el NodePort
+(como lo haría un navegador desde fuera del clúster): cada usuario virtual inicia sesión como invitado,
+abre el catálogo, consulta un componente y hace una búsqueda, con pausas de 1 a 3 s entre pasos.
+
+| Etapa | Duración | Usuarios virtuales |
+|---|---|---|
+| Calentamiento | 30 s | 0 → 10 |
+| Llegan más usuarios | 1 min | 10 → 100 |
+| Hora pico | 1 min | 100 → 200 |
+| Se mantiene el pico | 3 min | 200 |
+| Los usuarios se van | 1 min | 200 → 0 |
+
+Umbrales: menos de 5 % de peticiones fallidas, más de 95 % de checks correctos y p95 de la API por debajo de 3 s.
+
+```bash
+brew install k6
+K6_WEB_DASHBOARD=true k6 run pruebas/k6/usuarios-developer-hub.js   # dashboard en http://localhost:5665
+PICO=100 BASE_URL=http://10.5.0.3:30700 k6 run pruebas/k6/usuarios-developer-hub.js
+```
+
+Mientras corre, el HPA sube las réplicas y Argo CD muestra los Pods nuevos en el árbol de la aplicación.
 
 ## Problemas resueltos durante el despliegue
 
