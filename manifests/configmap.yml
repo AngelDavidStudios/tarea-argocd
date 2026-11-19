@@ -1,0 +1,97 @@
+# Configuración de Red Hat Developer Hub (app-config) y catálogo de ejemplo.
+# Se monta en /cfg dentro del contenedor (ver deployment.yml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: developer-hub-config
+  labels:
+    app: developer-hub
+data:
+  app-config.yaml: |
+    app:
+      title: Developer Hub · Tarea Argo CD
+      # URL con la que se abre desde la Mac: IP del worker + nodePort de service.yml
+      baseUrl: http://10.5.0.3:30700
+    organization:
+      name: UDLA · Procesos de Software
+    backend:
+      baseUrl: http://10.5.0.3:30700
+      listen:
+        port: 7007
+      cors:
+        origin: http://10.5.0.3:30700
+      # Base de datos en memoria: cada réplica carga el catálogo desde el ConfigMap
+      database:
+        client: better-sqlite3
+        connection: ':memory:'
+    auth:
+      environment: development
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+    catalog:
+      rules:
+        - allow: [Component, System, API, Resource, Location, Group, User, Domain]
+      locations:
+        - type: file
+          target: /cfg/catalog.yaml
+  catalog.yaml: |
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: equipo-devops
+      title: Equipo DevOps
+    spec:
+      type: team
+      children: []
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: System
+    metadata:
+      name: tarea-argocd
+      title: Tarea Argo CD (GitOps)
+      description: Despliegue de Red Hat Developer Hub en Kubernetes gestionado por Argo CD.
+    spec:
+      owner: equipo-devops
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: developer-hub
+      title: Red Hat Developer Hub
+      description: Portal interno de desarrolladores (Backstage) desplegado con Deployment, Service NodePort y HPA.
+      tags: [backstage, rhdh, kubernetes]
+      links:
+        - url: https://github.com/AngelDavidStudios/tarea-argocd
+          title: Repositorio GitOps
+    spec:
+      type: website
+      lifecycle: production
+      owner: equipo-devops
+      system: tarea-argocd
+      dependsOn: [resource:cluster-talos]
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: argocd
+      title: Argo CD
+      description: Controlador GitOps que sincroniza el repositorio con el clúster.
+      tags: [gitops, argocd]
+    spec:
+      type: service
+      lifecycle: production
+      owner: equipo-devops
+      system: tarea-argocd
+      dependsOn: [resource:cluster-talos]
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Resource
+    metadata:
+      name: cluster-talos
+      title: Clúster Talos Linux (QEMU)
+      description: Kubernetes v1.37 con 1 control plane y 1 worker sobre Talos Linux.
+    spec:
+      type: kubernetes-cluster
+      owner: equipo-devops
+      system: tarea-argocd

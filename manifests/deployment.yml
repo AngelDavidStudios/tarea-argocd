@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: developer-hub
+  labels:
+    app: developer-hub
+spec:
+  # Réplicas iniciales. Luego las ajusta el HPA (hpa.yml) entre 2 y 5.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: developer-hub
+  template:
+    metadata:
+      labels:
+        app: developer-hub
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: developer-hub
+          # Build comunitario de Red Hat Developer Hub, multi-arch (amd64 + arm64)
+          image: quay.io/rhdh-community/rhdh:1.10.7
+          args: ["--config", "/cfg/app-config.yaml"]
+          ports:
+            - name: http
+              containerPort: 7007
+          env:
+            # Limita el heap de Node.js para que entren 5 réplicas en el worker
+            - name: NODE_OPTIONS
+              value: "--no-node-snapshot --max-old-space-size=192"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 320Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /cfg
+              readOnly: true
+            - name: dynamic-plugins
+              mountPath: /opt/app-root/src/dynamic-plugins-root
+      volumes:
+        - name: config
+          configMap:
+            name: developer-hub-config
+        # RHDH exige este directorio; aquí no se instalan plugins dinámicos
+        - name: dynamic-plugins
+          emptyDir: {}

@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: developer-hub
+  labels:
+    app: developer-hub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: developer-hub
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50   # 50 % de requests.cpu (200m) = 100m por Pod
+  behavior:
+    scaleDown:
+      # Por defecto espera 300 s; se acorta para ver la reducción durante la demo
+      stabilizationWindowSeconds: 60

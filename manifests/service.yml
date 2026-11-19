@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: developer-hub
+  labels:
+    app: developer-hub
+spec:
+  type: NodePort
+  # Envía el tráfico a los Pods con esta etiqueta (la del template de deployment.yml)
+  selector:
+    app: developer-hub
+  ports:
+    - name: http
+      port: 80          # puerto del Service dentro del clúster
+      targetPort: 7007  # containerPort de Developer Hub
+      nodePort: 30700   # puerto abierto en cada nodo: http://10.5.0.3:30700
