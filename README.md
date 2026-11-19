@@ -12,9 +12,11 @@ manifests/            ← carpeta que sincroniza Argo CD
   deployment.yml      2 réplicas, labels/selectors, requests/limits, puerto 7007
   service.yml         NodePort 30700 → targetPort 7007
   hpa.yml             autoscaling/v2: 2 a 5 réplicas al 50 % de CPU
-  postgres.yml        PostgreSQL compartido (Secret, PVC, Deployment, Service ClusterIP)
+  postgres.yml        PostgreSQL compartido (PVC, Deployment, Service ClusterIP)
+  postgres-sealedsecret.yml   credenciales de PostgreSQL cifradas con Sealed Secrets
 argocd/
   application.yml     Application de Argo CD con Automated Sync (prune + selfHeal)
+  sealed-secrets.yml  Application que instala el controlador de Sealed Secrets en kube-system
 scripts/
   generar-carga.sh    genera tráfico dentro del clúster para probar el HPA
 pruebas/k6/
@@ -44,7 +46,7 @@ asociado a los Pods con el selector `app: developer-hub`.
 
 **PostgreSQL** `postgres`: base común para todas las réplicas. Guarda el catálogo y las claves con que se firman
 las sesiones, así cualquier réplica valida el token emitido por otra y Developer Hub puede escalar sin estado.
-Las credenciales del Secret son de laboratorio: la base solo se expone dentro del clúster.
+Las credenciales no están en el repositorio en texto plano: ver «Secretos con Sealed Secrets».
 
 **Application** `developer-hub`: apunta a `manifests/` en la rama `main`, crea el namespace `developer-hub`
 y tiene `automated` con `prune` y `selfHeal`. Ignora `/spec/replicas` del Deployment para que el HPA y Argo CD no se peleen.
@@ -52,7 +54,8 @@ y tiene `automated` con `prune` y `selfHeal`. Ignora `/spec/replicas` del Deploy
 ## Uso
 
 ```bash
-# 1. Registrar la aplicación en Argo CD (una sola vez)
+# 1. Registrar las aplicaciones en Argo CD (una sola vez)
+kubectl apply -f argocd/sealed-secrets.yml
 kubectl apply -f argocd/application.yml
 
 # 2. Ver el estado
@@ -66,6 +69,24 @@ open http://10.5.0.3:30700
 bash scripts/generar-carga.sh 240 12
 kubectl -n developer-hub get hpa developer-hub -w
 ```
+
+## Secretos con Sealed Secrets
+
+Un `Secret` de Kubernetes solo codifica sus valores en base64, así que no puede subirse a un repositorio público.
+Las credenciales de PostgreSQL se guardan como `SealedSecret` (`manifests/postgres-sealedsecret.yml`): están
+cifradas con la clave pública del controlador de Sealed Secrets y solo el clúster puede descifrarlas.
+Argo CD aplica el `SealedSecret` y el controlador crea el `Secret` `credenciales-postgres`, que leen
+PostgreSQL y Developer Hub con `envFrom.secretRef`.
+
+```bash
+brew install kubeseal
+# Volver a generar el SealedSecret (por ejemplo, para rotar la contraseña)
+kubectl -n developer-hub create secret generic credenciales-postgres \
+  --from-literal=POSTGRES_USER=rhdh --from-literal=POSTGRES_PASSWORD="$PG_PASSWORD" \
+  --dry-run=client -o yaml | kubeseal --format yaml > manifests/postgres-sealedsecret.yml
+```
+
+Si se recrea el clúster, la clave privada del controlador cambia y hay que volver a cifrar las credenciales.
 
 ## Prueba de carga con k6
 
@@ -97,6 +118,7 @@ Mientras corre, el HPA sube las réplicas y Argo CD muestra los Pods nuevos en e
 |---|---|---|
 | Página en blanco, `ERR_SSL_PROTOCOL_ERROR` en el navegador | La CSP de Backstage incluye `upgrade-insecure-requests` y el NodePort sirve HTTP | `backend.csp.upgrade-insecure-requests: false` |
 | `401 Unauthorized` intermitente con 2 réplicas | SQLite en memoria: cada réplica firmaba sesiones con su propia clave | PostgreSQL compartido |
+| Contraseña de PostgreSQL legible en el repositorio público | Un `Secret` solo codifica en base64 | `SealedSecret` cifrado y contraseña rotada |
 | Al escalar a 5, las réplicas nuevas no quedaban Ready | PostgreSQL OOMKilled con límite de 256Mi (~18 conexiones por réplica) | Límite 512Mi, `max_connections=150`, pool de 3 por plugin |
 
 Cualquier cambio en `manifests/` que se suba a `main` lo aplica Argo CD solo, sin `kubectl apply`.
