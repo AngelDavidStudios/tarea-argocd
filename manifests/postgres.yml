@@ -1,18 +1,8 @@
 # PostgreSQL compartido por todas las réplicas de Developer Hub.
 # Guarda el catálogo y las claves de firma de sesión: así cualquier réplica valida
 # el token de cualquier otra y los Pods de Developer Hub quedan sin estado (escalables).
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-credenciales
-  labels:
-    app: postgres
-type: Opaque
-stringData:
-  # Credenciales de laboratorio: la base solo es accesible dentro del clúster (Service ClusterIP)
-  POSTGRES_USER: rhdh
-  POSTGRES_PASSWORD: rhdh-demo-lab
----
+# Las credenciales vienen del Secret credenciales-postgres, que crea Sealed Secrets
+# a partir de postgres-sealedsecret.yml (cifrado; la contraseña nunca está en Git).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -60,7 +50,7 @@ spec:
               containerPort: 5432
           envFrom:
             - secretRef:
-                name: postgres-credenciales
+                name: credenciales-postgres
           env:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata

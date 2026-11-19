@@ -16,7 +16,7 @@ spec:
         app: developer-hub
       annotations:
         # Subir este número al cambiar configmap.yml para que los Pods se recreen con la nueva configuración
-        developer-hub/config-version: "4"
+        developer-hub/config-version: "5"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -44,9 +44,9 @@ spec:
             - name: http
               containerPort: 7007
           envFrom:
-            # POSTGRES_USER y POSTGRES_PASSWORD para app-config (postgres.yml)
+            # POSTGRES_USER y POSTGRES_PASSWORD para app-config (Secret descifrado por Sealed Secrets)
             - secretRef:
-                name: postgres-credenciales
+                name: credenciales-postgres
           env:
             # Limita el heap de Node.js para que entren 5 réplicas en el worker
             - name: NODE_OPTIONS
