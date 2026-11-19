@@ -23,10 +23,14 @@ data:
       # El NodePort sirve HTTP: sin esto el navegador intenta cargar el JS por HTTPS y la página queda en blanco
       csp:
         upgrade-insecure-requests: false
-      # Base de datos en memoria: cada réplica carga el catálogo desde el ConfigMap
+      # PostgreSQL compartido (postgres.yml): todas las réplicas ven los mismos datos y claves de sesión
       database:
-        client: better-sqlite3
-        connection: ':memory:'
+        client: pg
+        connection:
+          host: postgres
+          port: 5432
+          user: ${POSTGRES_USER}
+          password: ${POSTGRES_PASSWORD}
     auth:
       environment: development
       providers:

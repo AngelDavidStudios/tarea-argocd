@@ -16,12 +16,25 @@ spec:
         app: developer-hub
       annotations:
         # Subir este número al cambiar configmap.yml para que los Pods se recreen con la nueva configuración
-        developer-hub/config-version: "2"
+        developer-hub/config-version: "3"
     spec:
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        # Espera a que PostgreSQL acepte conexiones antes de arrancar Developer Hub
+        - name: esperar-postgres
+          image: busybox:1.37
+          command: ["sh", "-c", "until nc -z -w 2 postgres 5432; do echo esperando postgres; sleep 2; done"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+          securityContext:
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
       containers:
         - name: developer-hub
           # Build comunitario de Red Hat Developer Hub, multi-arch (amd64 + arm64)
@@ -30,6 +43,10 @@ spec:
           ports:
             - name: http
               containerPort: 7007
+          envFrom:
+            # POSTGRES_USER y POSTGRES_PASSWORD para app-config (postgres.yml)
+            - secretRef:
+                name: postgres-credenciales
           env:
             # Limita el heap de Node.js para que entren 5 réplicas en el worker
             - name: NODE_OPTIONS
